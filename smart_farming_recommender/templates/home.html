@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+
+{% block title %}Home - CropVerse{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<style>
+    .feature-icon {
+        font-size: 3rem;
+        color: var(--primary-green);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<div class="hero-section" style="background-image: url('https://images.pexels.com/photos/8422433/pexels-photo-8422433.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=2');">
+    <div class="hero-content">
+        <h1 class="display-4 text-white">Cultivating the Future with AI</h1>
+        <p class="lead text-white-50 mb-4">Your intelligent companion for smart and sustainable farming. Get data-driven insights in seconds.</p>
+        <div>
+            <a href="{% url 'ai_dashboard' %}" class="btn btn-success btn-lg mt-3">Go to AI Dashboard</a>
+            <a href="{% url 'register_page' %}" class="btn btn-outline-light btn-lg mt-3">Get Started</a>
+        </div>
+    </div>
+</div>
+
+<div class="container my-5">
+    <!-- Features Section -->
+    <div class="row my-5 py-5">
+        <div class="col-12 text-center mb-5">
+            <h2 class="display-5">A New Era of Farming</h2>
+            <p class="lead text-muted">Leverage cutting-edge AI to make smarter decisions for your farm.</p>
+        </div>
+        <div class="col-md-4 text-center mb-4">
+            <div class="p-4">
+                <i class="bi bi-chat-quote-fill feature-icon mb-3"></i>
+                <h3>AI Chatbot</h3>
+                <p>Get instant, expert answers to all your farming questions, from crop diseases to market trends.</p>
+            </div>
+        </div>
+        <div class="col-md-4 text-center mb-4">
+            <div class="p-4">
+                <i class="bi bi-file-earmark-text-fill feature-icon mb-3"></i>
+                <h3>Detailed Reporting</h3>
+                <p>Generate comprehensive, step-by-step farming plans tailored to your specific land, budget, and goals.</p>
+            </div>
+        </div>
+        <div class="col-md-4 text-center mb-4">
+            <div class="p-4">
+                <i class="bi bi-search feature-icon mb-3"></i>
+                <h3>Augmented Knowledge</h3>
+                <p>Our AI combines local knowledge with real-time web search to provide the most accurate, up-to-date advice.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- About Section -->
+    <div class="row my-5 py-5 align-items-center bg-light rounded">
+        <div class="col-md-6">
+            <img src="https://images.pexels.com/photos/1595437/pexels-photo-1595437.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=2" class="img-fluid rounded shadow" alt="Farmer smiling">
+        </div>
+        <div class="col-md-6">
+            <h2>For Farmers, By Innovators</h2>
+            <p class="text-muted">CropVerse is built on a foundation of respect for the land and the people who cultivate it. Our mission is to make advanced technology accessible and practical for every farmer, helping to increase yields, reduce waste, and promote sustainable practices for a healthier planet.</p>
+            <a href="{% url 'about' %}" class="btn btn-outline-success mt-3">Learn More About Us</a>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

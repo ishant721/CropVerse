@@ -1,0 +1,11 @@
+Django
+djangorestframework
+python-dotenv
+langchain-google-genai
+langchain-community
+langchain-core
+langgraph
+Pillow
+numpy
+sentence-transformers
+tavily-python

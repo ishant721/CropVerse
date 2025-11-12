@@ -1,0 +1,93 @@
+{% extends 'base.html' %}
+
+{% block title %}Register - CropVerse{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="form-container">
+                <h2 class="text-center mb-4">Create Your CropVerse Account</h2>
+                <form id="register-form">
+                    {% csrf_token %}
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="first_name" class="form-label">First Name</label>
+                            <input type="text" class="form-control" id="first_name" name="first_name" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="last_name" class="form-label">Last Name</label>
+                            <input type="text" class="form-control" id="last_name" name="last_name" required>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="place" class="form-label">Place</label>
+                            <input type="text" class="form-control" id="place" name="place" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="pincode" class="form-label">Pincode</label>
+                            <input type="text" class="form-control" id="pincode" name="pincode" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="phone_number" class="form-label">Phone Number</label>
+                        <input type="text" class="form-control" id="phone_number" name="phone_number" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="email" class="form-label">Email Address</label>
+                        <input type="email" class="form-control" id="email" name="email" required>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="password" class="form-label">Password</label>
+                            <input type="password" class="form-control" id="password" name="password" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="password2" class="form-label">Confirm Password</label>
+                            <input type="password" class="form-control" id="password2" name="password2" required>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">Register</button>
+                </form>
+                <div class="text-center mt-3">
+                    <p>Already have an account? <a href="{% url 'login_page' %}">Login here</a>.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.getElementById('register-form').addEventListener('submit', async function(event) {
+        event.preventDefault();
+        const first_name = document.getElementById('first_name').value;
+        const last_name = document.getElementById('last_name').value;
+        const place = document.getElementById('place').value;
+        const pincode = document.getElementById('pincode').value;
+        const phone_number = document.getElementById('phone_number').value;
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        const password2 = document.getElementById('password2').value;
+
+        const response = await fetch('/accounts/api/register/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({ first_name, last_name, place, pincode, phone_number, email, password, password2 })
+        });
+
+        if (response.ok) {
+            sessionStorage.setItem('registration_email', email);
+            window.location.href = '/accounts/verify-otp/';
+        } else {
+            const data = await response.json();
+            console.error('Registration failed:', data);
+            // TODO: Display error messages to the user in a more user-friendly way
+            alert('Registration failed. Please check the console for details.');
+        }
+    });
+</script>
+{% endblock %}

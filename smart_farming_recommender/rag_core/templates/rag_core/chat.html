@@ -1,0 +1,257 @@
+{% extends 'rag_core/ai_base.html' %}
+
+{% block ai_title %}AI Chat - CropVerse AI{% endblock %}
+
+{% block head_extra %}
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+    .history-sidebar {
+        height: 85vh;
+        overflow-y: auto;
+        border-right: 1px solid #dee2e6;
+        display: flex;
+        flex-direction: column;
+    }
+    .history-item {
+        padding: 12px 15px;
+        cursor: pointer;
+        border-bottom: 1px solid #f1f1f1;
+        transition: background-color 0.2s;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .history-item:hover, .history-item.active {
+        background-color: #e9f5ec;
+    }
+    .chat-main {
+        height: 85vh;
+        display: flex;
+        flex-direction: column;
+    }
+    #chat-container {
+        flex-grow: 1;
+        overflow-y: auto;
+        padding: 20px;
+    }
+    .message {
+        padding: 10px 15px;
+        border-radius: 15px;
+        margin-bottom: 10px;
+        max-width: 80%;
+        line-height: 1.5;
+    }
+    .user-message {
+        background-color: #dcf8c6;
+        align-self: flex-end;
+        margin-left: auto;
+    }
+    .bot-message {
+        background-color: #f1f0f0;
+        align-self: flex-start;
+    }
+    .bot-message img, .user-message img {
+        max-width: 100%;
+        border-radius: 10px;
+        margin-top: 5px;
+    }
+    #input-area {
+        border-top: 1px solid #dee2e6;
+        padding: 15px;
+    }
+</style>
+{% endblock %}
+
+{% block ai_content %}
+<div class="row g-0">
+    <!-- Sidebar for Chat History -->
+    <div class="col-md-3">
+        <div class="history-sidebar p-2">
+            <button class="btn btn-outline-success mb-3" onclick="newChat()">+ New Chat</button>
+            <div id="chat-history-list">
+                {% for session in sessions %}
+                <div class="history-item" id="session-{{ session.id }}" data-session-id="{{ session.id }}" onclick="loadSession({{ session.id }}, this)">
+                    {{ session.title|truncatewords:3 }}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Chat Area -->
+    <div class="col-md-9">
+        <div class="chat-main">
+            <div id="chat-container">
+                <div class="message bot-message">Hello! Select a past conversation or start a new one.</div>
+            </div>
+            <div id="input-area">
+                <div id="image-previews" style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;"></div>
+                <div class="input-group">
+                    <button id="upload-image-button" class="btn btn-outline-secondary" type="button" title="Upload Image">🖼️</button>
+                    <input type="file" id="image-input" accept="image/*" multiple style="display: none;">
+                    <input type="text" id="user-input" class="form-control" placeholder="Ask your question...">
+                    <button id="send-button" class="btn btn-success">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const chatContainer = document.getElementById('chat-container');
+    const userInput = document.getElementById('user-input');
+    const sendButton = document.getElementById('send-button');
+    const imageInput = document.getElementById('image-input');
+    const uploadImageButton = document.getElementById('upload-image-button');
+    const imagePreviewsContainer = document.getElementById('image-previews');
+    
+    let currentSessionId = null;
+
+    marked.setOptions({ gfm: true, breaks: true, sanitize: true });
+
+    // Helper function to truncate text by words
+    function truncateWords(text, numWords) {
+        const words = text.split(' ');
+        if (words.length > numWords) {
+            return words.slice(0, numWords).join(' ') + '...';
+        }
+        return text;
+    }
+
+    // --- Event Listeners ---
+    uploadImageButton.addEventListener('click', () => imageInput.click());
+    sendButton.addEventListener('click', sendMessage);
+    userInput.addEventListener('keypress', e => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+    imageInput.addEventListener('change', handleImagePreview);
+
+    // --- Functions ---
+    function handleImagePreview() {
+        imagePreviewsContainer.innerHTML = '';
+        for (const file of imageInput.files) {
+            const reader = new FileReader();
+            reader.onload = e => {
+                const img = document.createElement('img');
+                img.src = e.target.result;
+                img.style.cssText = 'max-width: 80px; max-height: 80px; border-radius: 5px;';
+                imagePreviewsContainer.appendChild(img);
+            };
+            reader.readAsDataURL(file);
+        }
+    }
+
+    function appendMessage(sender, text, isMarkdown = false) {
+        const messageDiv = document.createElement('div');
+        messageDiv.classList.add('message', sender === 'user' ? 'user-message' : 'bot-message');
+        
+        if (isMarkdown) {
+            messageDiv.innerHTML = marked.parse(text);
+        } else {
+            messageDiv.textContent = text;
+        }
+        
+        chatContainer.appendChild(messageDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    window.newChat = function() {
+        currentSessionId = null;
+        chatContainer.innerHTML = '<div class="message bot-message">Hello! How can I help you with your farming questions today?</div>';
+        document.querySelectorAll('.history-item').forEach(item => item.classList.remove('active'));
+    }
+
+    window.loadSession = async function(sessionId, element) {
+        if (currentSessionId === sessionId) return;
+
+        document.querySelectorAll('.history-item').forEach(item => item.classList.remove('active'));
+        element.classList.add('active');
+        
+        currentSessionId = sessionId;
+        chatContainer.innerHTML = '<div class="spinner-border text-success mx-auto" role="status"><span class="visually-hidden">Loading...</span></div>';
+
+        try {
+            const response = await fetch(`/rag/api/chat_history/${sessionId}/`);
+            if (!response.ok) throw new Error('Failed to load chat history.');
+            
+            const messages = await response.json();
+            chatContainer.innerHTML = '';
+            messages.forEach(msg => {
+                appendMessage(msg.is_user_message ? 'user' : 'bot', msg.message, !msg.is_user_message);
+            });
+        } catch (error) {
+            console.error('Error loading session:', error);
+            chatContainer.innerHTML = '<div class="message bot-message text-danger">Error loading chat history.</div>';
+        }
+    }
+
+    async function sendMessage() {
+        const question = userInput.value.trim();
+        const imageFiles = imageInput.files;
+
+        if (!question && imageFiles.length === 0) return;
+
+        appendMessage('user', question);
+        
+        const formData = new FormData();
+        formData.append('question', question);
+        if (currentSessionId) {
+            formData.append('session_id', currentSessionId);
+        }
+        for (const file of imageFiles) {
+            formData.append('images', file);
+        }
+
+        userInput.value = '';
+        imageInput.value = '';
+        imagePreviewsContainer.innerHTML = '';
+        sendButton.disabled = true;
+
+        try {
+            const response = await fetch('/rag/api/chat/', {
+                method: 'POST',
+                headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+                body: formData
+            });
+
+            const data = await response.json();
+            if (response.ok) {
+                appendMessage('bot', data.answer, true);
+                
+                // If it was a new chat, the backend will return a 'new_session' object
+                if (data.new_session) {
+                    currentSessionId = data.new_session.id;
+                    addSessionToHistory(data.new_session);
+                }
+            } else {
+                appendMessage('bot', `Error: ${data.error || 'Something went wrong.'}`);
+            }
+        } catch (error) {
+            console.error('Fetch error:', error);
+            appendMessage('bot', 'An unexpected error occurred. Please try again.');
+        }
+    } finally {
+            sendButton.disabled = false;
+        }
+    }
+
+    function addSessionToHistory(session) {
+        const historyList = document.getElementById('chat-history-list');
+        const newSessionItem = document.createElement('div');
+        newSessionItem.className = 'history-item active';
+        newSessionItem.id = `session-${session.id}`;
+        newSessionItem.setAttribute('data-session-id', session.id);
+        newSessionItem.setAttribute('onclick', `loadSession(${session.id}, this)`);
+        newSessionItem.textContent = truncateWords(session.title, 3); // Truncate here
+
+        document.querySelectorAll('.history-item').forEach(item => item.classList.remove('active'));
+        historyList.prepend(newSessionItem);
+    }
+});
+</script>
+{% endblock %}

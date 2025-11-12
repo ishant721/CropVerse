@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+
+{% block title %}{% block ai_title %}CropVerse AI{% endblock %}{% endblock %}
+
+{% block content %}
+<div class="container my-4">
+    <div class="d-flex justify-content-center">
+        <ul class="nav nav-pills">
+            <li class="nav-item">
+                <a class="nav-link {% if request.resolver_match.url_name == 'ai_dashboard' %}active bg-success{% endif %}" href="{% url 'ai_dashboard' %}">AI Hub</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.resolver_match.url_name == 'rag_chat_page' %}active bg-success{% endif %}" href="{% url 'rag_chat_page' %}">AI Chatbot</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.resolver_match.url_name == 'planning_page' %}active bg-success{% endif %}" href="{% url 'planning_page' %}">Report Generation</a>
+            </li>
+        </ul>
+    </div>
+    <hr>
+    {% block ai_content %}
+    {% endblock %}
+</div>
+{% endblock %}
