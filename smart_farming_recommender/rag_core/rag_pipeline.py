@@ -7,10 +7,14 @@ from langchain_community.vectorstores import Chroma
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from langchain_core.runnables import RunnablePassthrough
+from langchain_core.messages import HumanMessage, SystemMessage
 from typing import List, Dict
 from typing_extensions import TypedDict
 from langgraph.graph import END, StateGraph
 from langchain_community.tools.tavily_search import TavilySearchResults
+from .disease_predictor import predict_disease
+import base64
+import tempfile
 
 # Suppress LangChainDeprecationWarning
 warnings.filterwarnings("ignore", category=DeprecationWarning, module='langchain')
@@ -32,12 +36,7 @@ try:
     # Test if the model is available
     llm.invoke("Hello")
 except Exception as e:
-    if "404 models/gemini-2.5-flash is not found" in str(e):
-        print("gemini-2.5-flash not found, falling back to gemini-pro-vision.")
-        llm = ChatGoogleGenerativeAI(model="gemini-pro-vision", temperature=0, convert_system_message_to_human=True)
-        llm.invoke("Hello") # Test gemini-pro-vision
-    else:
-        raise e
+    raise e # If gemini-pro-vision fails, something is seriously wrong.
 # Initialize Embeddings
 embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
@@ -56,7 +55,7 @@ class GraphState(TypedDict):
     Represents the state of our graph.
 
     Attributes:
-        question: The user's question.
+        question: The user's question, now a list of message parts (text and/or image).
         generation: The LLM's generated answer.
         documents: The list of documents retrieved from the knowledge base.
         web_search_results: The results from web search.
@@ -64,7 +63,7 @@ class GraphState(TypedDict):
         decision: The decision made by the grader (e.g., "continue", "web_search", "finish", "re-try", "relevant", "irrelevant").
         classification: The classification of the user's question (e.g., "farming", "political", "other").
     """
-    question: str
+    question: List[Dict] # Changed from str to List[Dict]
     generation: str
     documents: List[str]
     web_search_results: List[str]
@@ -84,9 +83,16 @@ def retrieve_documents(state):
         dict: New state with documents.
     """
     print("---RETRIEVING DOCUMENTS---")
-    question = state["question"]
-    documents = retriever.invoke(question)
-    return {"documents": documents, "question": question}
+    messages = state["question"] # Now it's a list of messages
+    
+    # Extract text content for retrieval
+    text_question = ""
+    for msg_part in messages:
+        if msg_part["type"] == "text":
+            text_question += msg_part["text"] + " "
+    
+    documents = retriever.invoke(text_question.strip())
+    return {"documents": documents, "question": messages} # Pass the full messages list back
 
 def grade_documents(state):
     """
@@ -99,7 +105,14 @@ def grade_documents(state):
         dict: New state with a decision ("continue" or "web_search").
     """
     print("---CHECKING DOCUMENT RELEVANCE---")
-    question = state["question"]
+    messages = state["question"] # Now it's a list of messages
+
+    # Extract text content for grading
+    text_question = ""
+    for msg_part in messages:
+        if msg_part["type"] == "text":
+            text_question += msg_part["text"] + " "
+
     documents = state["documents"]
 
     # LLM call to grade documents
@@ -113,17 +126,17 @@ def grade_documents(state):
     # Grade each document
     relevant_docs = []
     for doc in documents:
-        result = grader_chain.invoke({"document_content": doc.page_content, "question": question})
+        result = grader_chain.invoke({"document_content": doc.page_content, "question": text_question.strip()})
         grade = result.get("score", "no")
         if grade.lower() == "yes":
             relevant_docs.append(doc)
     
     if relevant_docs:
         print("---DECISION: DOCUMENTS ARE RELEVANT, CONTINUE---")
-        return {"documents": relevant_docs, "question": question, "decision": "continue"}
+        return {"documents": relevant_docs, "question": messages, "decision": "continue"}
     else:
         print("---DECISION: NO RELEVANT DOCUMENTS, WEB SEARCH---")
-        return {"question": question, "decision": "web_search"}
+        return {"question": messages, "decision": "web_search"}
 
 def web_search(state):
     """
@@ -136,9 +149,16 @@ def web_search(state):
         dict: New state with web search results.
     """
     print("---WEB SEARCH---")
-    question = state["question"]
-    web_search_results = tavily_tool.invoke({"query": question})
-    return {"web_search_results": web_search_results, "question": question}
+    messages = state["question"] # Now it's a list of messages
+
+    # Extract text content for web search
+    text_question = ""
+    for msg_part in messages:
+        if msg_part["type"] == "text":
+            text_question += msg_part["text"] + " "
+
+    web_search_results = tavily_tool.invoke({"query": text_question.strip()})
+    return {"web_search_results": web_search_results, "question": messages}
 
 def generate_answer(state):
     """
@@ -151,27 +171,40 @@ def generate_answer(state):
         dict: New state with the generated answer.
     """
     print("---GENERATING ANSWER---")
-    question = state["question"]
+    messages = state["question"] # Now it's a list of messages
     documents = state["documents"]
     web_search_results = state.get("web_search_results", [])
     
-    context = ""
+    context_text = ""
     if documents:
-        context += "Knowledge Base Documents:\n" + "\n\n".join([doc.page_content for doc in documents])
+        context_text += "Knowledge Base Documents:\n" + "\n\n".join([doc.page_content for doc in documents])
     if web_search_results:
-        context += "\n\nWeb Search Results:\n" + "\n\n".join([str(s) for s in web_search_results])
+        context_text += "\n\nWeb Search Results:\n" + "\n\n".join([str(s) for s in web_search_results])
 
-    if not context:
+    if not context_text:
         generation = "I can only help you with farmer related queries."
     else:
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are an agricultural expert. Use the following context to answer the question. Format your answer in a highly structured and presentable way using Markdown. Use clear, hierarchical headings (e.g., ## for main sections, ### for sub-sections), bullet points for lists, and bold text for key terms or important details. Ensure the output is easy to read and well-organized. If you don't know the answer, just say that you don't know, don't try to make up an answer.\n\n{context}"),
-            ("user", "{question}")
-        ])
-        rag_chain = prompt | llm | StrOutputParser()
-        generation = rag_chain.invoke({"context": context, "question": question})
+        # Create a system message with the context
+        system_message = SystemMessage(
+            content=(
+                "You are an agricultural expert. Use the following context to answer the question. "
+                "Format your answer in a highly structured and presentable way using Markdown. "
+                "Use clear, hierarchical headings (e.g., ## for main sections, ### for sub-sections), "
+                "bullet points for lists, and bold text for key terms or important details. "
+                "Ensure the output is easy to read and well-organized. "
+                "If you don't know the answer, just say that you don't know, don't try to make up an answer.\n\n"
+                f"Context:\n{context_text}"
+            )
+        )
+        
+        # Create a human message with the user's input (text and images)
+        human_message = HumanMessage(content=messages)
+        
+        # Invoke the LLM with the full list of messages
+        full_messages = [system_message, human_message]
+        generation = llm.invoke(full_messages).content
     
-    return {"documents": documents, "web_search_results": web_search_results, "question": question, "generation": generation}
+    return {"documents": documents, "web_search_results": web_search_results, "question": messages, "generation": generation}
 
 def grade_generation(state):
     """
@@ -184,7 +217,14 @@ def grade_generation(state):
         dict: The original state, as this is a read-only check.
     """
     print("---CHECKING IF ANSWER IS GROUNDED IN DOCUMENTS---")
-    question = state["question"]
+    messages = state["question"] # Now it's a list of messages
+
+    # Extract text content for grading
+    text_question = ""
+    for msg_part in messages:
+        if msg_part["type"] == "text":
+            text_question += msg_part["text"] + " "
+
     documents = state["documents"]
     generation = state["generation"]
     web_search_results = state.get("web_search_results", [])
@@ -230,20 +270,27 @@ def transform_query(state):
         dict: New state with a transformed query.
     """
     print("---TRANSFORMING QUERY---")
-    question = state["question"]
+    messages = state["question"] # Now it's a list of messages
+
+    # Extract text content for query transformation
+    text_question = ""
+    for msg_part in messages:
+        if msg_part["type"] == "text":
+            text_question += msg_part["text"] + " "
+
     documents = state["documents"]
     web_search_results = state.get("web_search_results", [])
     iteration = state.get("iteration", 0) + 1
 
     if iteration > 3:
         print("---MAX ITERATIONS REACHED, FINISHING---")
-        return {"question": question}
+        return {"question": messages} # Return the original messages
 
     context = ""
     if documents:
         context += "Knowledge Base Documents:\n" + "\n\n".join([doc.page_content for doc in documents])
     if web_search_results:
-        context += "\n\nWeb Search Results:\n" + "\n\n".join([str(s) for s in web_search_results])
+        context += "\n\n".join([str(s) for s in web_search_results])
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", "You are a query transformation expert. Your task is to rewrite the user's question to be more specific and easier to answer, based on the previously retrieved information (documents and/or web search results). Do not generate an answer, only a better question."),
@@ -251,9 +298,17 @@ def transform_query(state):
     ])
     
     transform_chain = prompt | llm | StrOutputParser()
-    better_question = transform_chain.invoke({"question": question, "context": context})
+    better_question_text = transform_chain.invoke({"question": text_question.strip(), "context": context})
     
-    return {"question": better_question, "iteration": iteration}
+    # Reconstruct the messages with the transformed text question
+    transformed_messages = []
+    for msg_part in messages:
+        if msg_part["type"] == "text":
+            transformed_messages.append({"type": "text", "text": better_question_text})
+        else:
+            transformed_messages.append(msg_part) # Keep image parts as they are
+            
+    return {"question": transformed_messages, "iteration": iteration}
 
 # --- 4. Build the Graph ---
 
@@ -331,7 +386,8 @@ if __name__ == "__main__":
     # pipeline = get_rag_pipeline()
     
     # # The input to the graph is a dictionary with the key "question"
-    # inputs = {"question": "What are the common diseases of rice and how to prevent them?"}
+    # # inputs = {"question": "What are the common diseases of rice and how to prevent them?"}
+    inputs = {"question": [{"type": "text", "text": "What are the common diseases of rice and how to prevent them?"}]}
     
     # for output in pipeline.stream(inputs):
     #     for key, value in output.items():

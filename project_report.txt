@@ -1,0 +1,64 @@
+Project Title: Smart Farming Recommender System
+
+1. Introduction:
+
+The Smart Farming Recommender System is a web-based application designed to assist farmers with agricultural queries, provide detailed farming reports, and offer insights into plant health. It leverages Retrieval Augmented Generation (RAG) techniques, multi-modal AI capabilities (text and image processing), and external knowledge sources to deliver comprehensive and actionable information. The system aims to enhance agricultural productivity and decision-making by providing data-driven recommendations.
+
+2. Architecture Overview:
+
+The project follows a modular architecture based on the Django web framework. It consists of:
+
+*   Frontend (HTML, CSS, JavaScript): Provides an interactive user interface for chat, report generation, and displaying information.
+*   Backend (Django, Django REST Framework): Handles user authentication, data management, API endpoints, and orchestrates the RAG pipeline.
+*   RAG Pipeline (LangGraph, LangChain, Google Gemini): The core intelligence engine that processes user queries, retrieves information from various sources, and generates responses.
+*   Vector Store (Chroma DB): Stores embedded agricultural knowledge for efficient retrieval.
+*   External Tools: Integrates with web search (Tavily) and a plant disease prediction model.
+
+3. Key Components and Functionality:
+
+*   User Authentication (accounts app):
+    *   Manages user registration, login, and profile management.
+    *   Ensures secure access to the system's features.
+
+*   Chatbot Interface (rag_core app):
+    *   Multi-modal Input: Users can submit queries with both text and images. Images are base64 encoded and sent to the backend.
+    *   Interactive Chat: Displays user messages, bot responses, and a "thinking..." indicator during processing.
+    *   Chat History: Allows users to view and load past conversations.
+    *   Image Display: Uploaded images are displayed directly within the chat interface.
+
+*   RAG Pipeline (rag_core/rag_pipeline.py):
+    *   Self-Corrective RAG Architecture: The pipeline implements a self-corrective RAG architecture. This involves multiple stages of information retrieval, generation, and grading. The system can identify when its initial generation is not grounded in the retrieved facts or when the retrieved documents are not relevant to the query. In such cases, it can transform the query and re-attempt retrieval and generation, ensuring higher quality and more accurate responses.
+    *   State Management (LangGraph): Uses GraphState to maintain the context and flow of the conversation, including the multi-modal question, retrieved documents, web search results, and disease predictions.
+    *   LLM Integration: Utilizes Google's Gemini Pro Vision model (ChatGoogleGenerativeAI) for its multi-modal capabilities, allowing it to process both text and images.
+    *   Document Retrieval (retrieve_documents): Fetches relevant information from a local Chroma vector store, which is populated with agricultural data.
+    *   Web Search (web_search): Integrates with Tavily Search to fetch up-to-date information from the web when internal knowledge is insufficient.
+    *   Answer Generation (generate_answer): Synthesizes information from retrieved documents, web search results, and disease predictions to formulate comprehensive and well-formatted responses in Markdown.
+    *   Grading and Transformation: Includes nodes for grading document relevance (grade_documents), assessing answer groundedness (grade_generation), and transforming queries (transform_query) for iterative refinement.
+    *   Disease Prediction Tool (Attached as Tool): A dedicated tool (disease_prediction_tool) is integrated into the LangGraph workflow. When a user provides an image and the system determines the intent is to identify a plant disease, this tool is invoked. The output of the disease prediction model is then used by the LLM to inform its response, providing a seamless integration of specialized knowledge.
+
+*   Disease Prediction Model (rag_core/disease_predictor.py):
+    *   Purpose: To identify plant diseases from uploaded images.
+    *   Current State: Contains a placeholder implementation for loading a PyTorch model (plant_disease_model_1_latest.pt), preprocessing images, and predicting disease names. The model architecture, class names, and specific preprocessing steps are currently assumed and need to be confirmed by the user.
+    *   Integration: Designed to be integrated as a tool within the RAG pipeline, allowing the LLM to leverage its predictions.
+
+*   Report Generation (GenerateReportView):
+    *   Allows users to request detailed farming reports by providing specific parameters (e.g., crop preference, soil type, budget).
+    *   Constructs a comprehensive query for the RAG pipeline to generate a structured report covering various aspects of cultivation, cost breakdown, and market analysis.
+
+4. Technologies Used:
+
+*   Backend: Python, Django, Django REST Framework
+*   Frontend: HTML, CSS, JavaScript, Bootstrap
+*   AI/ML: LangChain, LangGraph, Google Gemini Pro Vision, PyTorch, torchvision, pytesseract
+*   Database: Chroma DB (vector store)
+*   External APIs: Tavily Search
+*   Environment Management: python-dotenv
+
+5. Future Enhancements (Based on current state and user requests):
+
+*   Refine Disease Prediction Model Integration: Fully integrate the disease_prediction_tool into the LangGraph workflow with intelligent routing based on user intent and image presence.
+*   Improve Disease Predictor Accuracy: Replace placeholder model architecture and class names with actual, trained model details.
+*   Advanced Image Analysis: Explore integrating more sophisticated vision models for broader image understanding beyond just disease prediction (e.g., nutrient deficiency detection, pest identification).
+*   User-Specific Recommendations: Personalize farming recommendations based on user profiles, location, and historical data.
+*   Real-time Market Data Integration: Enhance report generation with live market prices for produce.
+*   Interactive Report Visualization: Develop interactive dashboards or visualizations for farming reports.

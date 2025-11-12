@@ -9,3 +9,6 @@ Pillow
 numpy
 sentence-transformers
 tavily-python
+pytesseract
+torch
+torchvision

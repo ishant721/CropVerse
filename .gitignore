@@ -129,9 +129,6 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# pytype static analyzer
-.pytype/
-
 # Cython debug symbols
 cython_debug/
 
@@ -145,3 +142,4 @@ cython_debug/
 smart_farming_recommender/db.sqlite3
 smart_farming_recommender/.env
 smart_farming_recommender/rag_core/chroma_db/
+plant_disease_model_1_latest.pt

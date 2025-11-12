@@ -6,26 +6,29 @@ from .rag_pipeline import get_rag_pipeline, perform_tavily_search # Import perfo
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from rest_framework.permissions import IsAuthenticated
+import tempfile
+import pytesseract
+import base64
 from PIL import Image
 import io
 import re # Import regex module
 
 def process_image_to_text(image_file):
     """
-    Placeholder function to process an image file and extract text or description.
-    In a real application, this would involve OCR or an image captioning model.
+    Uses pytesseract to perform OCR on an image file and extract text.
     """
     try:
         # Ensure the file pointer is at the beginning
         image_file.seek(0)
         img = Image.open(image_file)
-        # For now, just return a descriptive string.
-        # In a real scenario, you'd use a library like pytesseract for OCR
-        # or a vision-language model to describe the image.
-        return f"User provided an image of type {img.format} with size {img.size[0]}x{img.size[1]} pixels. " \
-               f"Further analysis of the image content would require an OCR or image description model."
+        # Use pytesseract to do OCR on the image
+        text = pytesseract.image_to_string(img)
+        if text.strip():
+            return f"The user provided an image containing the following text: {text}"
+        else:
+            return "User provided an image, but no text could be extracted."
     except Exception as e:
-        print(f"Error processing image: {e}")
+        print(f"Error processing image with pytesseract: {e}")
         return "User provided an image, but there was an error processing it."
 
 @login_required
@@ -52,24 +55,30 @@ class RAGChatView(APIView):
         if not user_question and not image_files:
             return Response({'error': 'Question or image is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # --- Combine text and image data into a single question ---
-        image_descriptions = []
-        if image_files:
-            for image_file in image_files:
-                description = process_image_to_text(image_file)
-                if "error" in description.lower():
-                    return Response({'error': f"Image processing failed: {description}"}, status=status.HTTP_400_BAD_REQUEST)
-                image_descriptions.append(description)
-        
-        full_question_parts = []
-        if image_descriptions:
-            full_question_parts.append("Image Context:")
-            full_question_parts.extend(image_descriptions)
+        # --- Combine text and image data into a single message list ---
+        message_parts = []
         if user_question:
-            full_question_parts.append(f"User Question: {user_question}")
-        full_question = "\n\n".join(full_question_parts)
+            message_parts.append({"type": "text", "text": user_question})
 
-        if not full_question.strip():
+        image_path = None
+        if image_files:
+            image_file = image_files[0] # For now, only handle one image
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_image:
+                for chunk in image_file.chunks():
+                    temp_image.write(chunk)
+                image_path = temp_image.name
+            
+            # Add image to message parts for display
+            image_file.seek(0) # Reset file pointer to the beginning
+            image_data = base64.b64encode(image_file.read()).decode('utf-8')
+            message_parts.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{image_data}"
+                }
+            })
+
+        if not message_parts:
             return Response({'error': 'No valid question or image content to process.'}, status=status.HTTP_400_BAD_REQUEST)
 
         # --- Session Management ---
@@ -83,12 +92,15 @@ class RAGChatView(APIView):
             session = ChatSession.objects.create(user=request.user, title=title)
         
         # Save user message
-        ChatMessage.objects.create(session=session, message=full_question, is_user_message=True)
+        # We need to decide how to save the multimodal message
+        # For now, we'll just save the text part
+        if user_question:
+            ChatMessage.objects.create(session=session, message=user_question, is_user_message=True)
 
         # --- RAG Pipeline Execution ---
         try:
             rag_pipeline = get_rag_pipeline()
-            inputs = {"question": full_question}
+            inputs = {"question": message_parts, "image_path": image_path}
             final_state = rag_pipeline.invoke(inputs)
             
             if final_state is None:
@@ -256,4 +268,20 @@ class ChatHistoryView(APIView):
         session = get_object_or_404(ChatSession, id=session_id, user=request.user)
         messages = session.messages.all()
         serializer = ChatMessageSerializer(messages, many=True)
+        return Response(serializer.data)
+
+class ReportSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Report
+        fields = ['id', 'title', 'content', 'created_at']
+
+class ReportDetailView(APIView):
+    """
+    API View to fetch a single report.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, report_id):
+        report = get_object_or_404(Report, id=report_id, user=request.user)
+        serializer = ReportSerializer(report)
         return Response(serializer.data)

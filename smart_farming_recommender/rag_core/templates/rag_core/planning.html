@@ -1,19 +1,79 @@
-{% block ai_content %}
-<div class="text-center my-4">
-    <h1 class="display-5 text-success">Detailed Report Generation</h1>
-    <p class="lead">Select a past report from the history or generate a new one.</p>
-</div>
+{% extends 'rag_core/ai_base.html' %}
 
-<div class="row">
+{% block ai_title %}Report Generation - CropVerse AI{% endblock %}
+
+{% block head_extra %}
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+    .history-sidebar {
+        height: 85vh;
+        overflow-y: auto;
+        border-right: 1px solid #dee2e6;
+        display: flex;
+        flex-direction: column;
+    }
+    .history-item {
+        padding: 12px 15px;
+        cursor: pointer;
+        border-bottom: 1px solid #f1f1f1;
+        transition: background-color 0.2s;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .history-item:hover, .history-item.active {
+        background-color: #e9f5ec;
+    }
+    .chat-main {
+        height: 85vh;
+        display: flex;
+        flex-direction: column;
+    }
+    #chat-container {
+        flex-grow: 1;
+        overflow-y: auto;
+        padding: 20px;
+    }
+    .message {
+        padding: 10px 15px;
+        border-radius: 15px;
+        margin-bottom: 10px;
+        max-width: 80%;
+        line-height: 1.5;
+    }
+    .user-message {
+        background-color: #dcf8c6;
+        align-self: flex-end;
+        margin-left: auto;
+    }
+    .bot-message {
+        background-color: #f1f0f0;
+        align-self: flex-start;
+    }
+    #input-area {
+        border-top: 1px solid #dee2e6;
+        padding: 15px;
+    }
+    .form-container {
+        background: #fff;
+        padding: 2rem;
+        border-radius: var(--border-radius);
+        box-shadow: var(--shadow-md);
+        margin: 1rem auto;
+    }
+</style>
+{% endblock %}
+
+{% block ai_content %}
+<div class="row g-0">
     <!-- Sidebar for Report History -->
     <div class="col-md-3">
-        <div class="card shadow-sm report-history-sidebar p-2">
-            <h5 class="text-center text-success mb-3">Report History</h5>
+        <div class="history-sidebar p-2">
+            <button class="btn btn-outline-success mb-3" onclick="newReport()">+ New Report</button>
             <div id="report-history-list">
                 {% for report in reports %}
-                <div class="report-history-item" data-title="{{ report.title }}" data-content="{{ report.content|escapejs }}" onclick="showReport(this)">
-                    <h6>{{ report.title|truncatewords:3 }}</h6>
-                    <p>{{ report.created_at|date:"M d, Y, P" }}</p>
+                <div class="history-item" id="report-{{ report.id }}" data-report-id="{{ report.id }}" onclick="loadReport({{ report.id }}, this)">
+                    {{ report.title|truncatewords:3 }}
                 </div>
                 {% endfor %}
             </div>
@@ -22,70 +82,67 @@
 
     <!-- Main Content Area -->
     <div class="col-md-9">
-        <div class="main-content p-2">
-            <div id="report-display" class="card shadow-sm" style="display: none;">
-                <div class="report-display-header">
-                    <h4 id="report-display-title" class="text-primary-green mb-0"></h4>
-                </div>
-                <div id="report-display-content" class="p-4"></div>
+        <div class="chat-main">
+            <div id="chat-container">
+                <div class="message bot-message">Welcome! Select a past report or generate a new one.</div>
             </div>
-
-            <div id="form-container" class="fade-in">
-                <div class="card shadow-sm p-4">
-                    <form id="report-form" onsubmit="return false;">
-                        {% csrf_token %}
-                        <div class="mb-3">
-                            <label for="user_report_query" class="form-label">Your Report Query</label>
-                            <textarea class="form-control" id="user_report_query" name="user_report_query" rows="4" placeholder="e.g., 'Detailed crop plan for wheat in Gwalior...'"></textarea>
-                            <div class="form-text">Describe the kind of report you need. The more detail, the better the result.</div>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="soil_type" class="form-label">Soil Type</label>
-                                <select class="form-select" id="soil_type" name="soil_type">
-                                    <option value="">Select Soil Type</option>
-                                    <option value="loamy">Loamy</option>
-                                    <option value="sandy">Sandy</option>
-                                    <option value="clay">Clay</option>
-                                    <option value="silt">Silt</option>
-                                    <option value="chalky">Chalky</option>
-                                    <option value="peaty">Peaty</option>
-                                </select>
+            <div id="input-area">
+                <div id="form-container" class="fade-in">
+                    <div class="card shadow-sm p-4">
+                        <form id="report-form" onsubmit="return false;">
+                            {% csrf_token %}
+                            <div class="mb-3">
+                                <label for="user_report_query" class="form-label">Your Report Query</label>
+                                <textarea class="form-control" id="user_report_query" name="user_report_query" rows="4" placeholder="e.g., 'Detailed crop plan for wheat in Gwalior...'"></textarea>
                             </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="budget" class="form-label">Budget (in USD)</label>
-                                <input type="number" class="form-control" id="budget" name="budget" min="0" placeholder="e.g., 5000">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="soil_type" class="form-label">Soil Type</label>
+                                    <select class="form-select" id="soil_type" name="soil_type">
+                                        <option value="">Select Soil Type</option>
+                                        <option value="loamy">Loamy</option>
+                                        <option value="sandy">Sandy</option>
+                                        <option value="clay">Clay</option>
+                                        <option value="silt">Silt</option>
+                                        <option value="chalky">Chalky</option>
+                                        <option value="peaty">Peaty</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="budget" class="form-label">Budget (in USD)</label>
+                                    <input type="number" class="form-control" id="budget" name="budget" min="0" placeholder="e.g., 5000">
+                                </div>
                             </div>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="crop_preference" class="form-label">Crop Preference</label>
-                                <input type="text" class="form-control" id="crop_preference" name="crop_preference" placeholder="e.g., Wheat, Rice, Corn">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="crop_preference" class="form-label">Crop Preference</label>
+                                    <input type="text" class="form-control" id="crop_preference" name="crop_preference" placeholder="e.g., Wheat, Rice, Corn">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="land_area" class="form-label">Land Area (in acres)</label>
+                                    <input type="number" class="form-control" id="land_area" name="land_area" min="0" step="0.1" placeholder="e.g., 5.5">
+                                </div>
                             </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="land_area" class="form-label">Land Area (in acres)</label>
-                                <input type="number" class="form-control" id="land_area" name="land_area" min="0" step="0.1" placeholder="e.g., 5.5">
+                            <div class="mb-3">
+                                <label for="climate_zone" class="form-label">Climate Zone</label>
+                                <input type="text" class="form-control" id="climate_zone" name="climate_zone" placeholder="e.g., Tropical, Temperate, Arid">
                             </div>
+                            <div class="mb-3">
+                                <label for="additional_notes" class="form-label">Additional Notes</label>
+                                <textarea class="form-control" id="additional_notes" name="additional_notes" rows="3" placeholder="Any other specific requirements or concerns"></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label for="report_image" class="form-label">Upload Image (optional)</label>
+                                <input type="file" class="form-control" id="report_image" name="image" accept="image/*">
+                            </div>
+                            <button type="submit" id="generate-report-btn" class="btn btn-success w-100 py-2">Generate Report</button>
+                        </form>
+                        <div id="loading-spinner" class="text-center mt-4" style="display: none;">
+                            <div class="spinner-border text-success" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Generating your detailed report...</p>
                         </div>
-                        <div class="mb-3">
-                            <label for="climate_zone" class="form-label">Climate Zone</label>
-                            <input type="text" class="form-control" id="climate_zone" name="climate_zone" placeholder="e.g., Tropical, Temperate, Arid">
-                        </div>
-                        <div class="mb-3">
-                            <label for="additional_notes" class="form-label">Additional Notes</label>
-                            <textarea class="form-control" id="additional_notes" name="additional_notes" rows="3" placeholder="Any other specific requirements or concerns"></textarea>
-                        </div>
-                        <div class="mb-3">
-                            <label for="report_image" class="form-label">Upload Image (optional)</label>
-                            <input type="file" class="form-control" id="report_image" name="image" accept="image/*">
-                        </div>
-                        <button type="submit" id="generate-report-btn" class="btn btn-success w-100 py-2">Generate New Report</button>
-                    </form>
-                    <div id="loading-spinner" class="text-center mt-4" style="display: none;">
-                        <div class="spinner-border text-success" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
-                        <p class="mt-2">Generating your detailed report...</p>
                     </div>
                 </div>
             </div>
@@ -93,121 +150,112 @@
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Set the marked options
-        marked.setOptions({
-            gfm: true,
-            breaks: true,
-            sanitize: true // IMPORTANT: Sanitize user-generated content to prevent XSS
-        });
+document.addEventListener('DOMContentLoaded', function() {
+    marked.setOptions({ gfm: true, breaks: true, sanitize: true });
 
-        // Helper function to truncate text by words
-        function truncateWords(text, numWords) {
-            if (!text) return '';
-            const words = text.split(' ');
-            if (words.length > numWords) {
-                return words.slice(0, numWords).join(' ') + '...';
-            }
-            return text;
+    const chatContainer = document.getElementById('chat-container');
+    const formContainer = document.getElementById('form-container');
+    const reportForm = document.getElementById('report-form');
+    const generateReportBtn = document.getElementById('generate-report-btn');
+    const loadingSpinner = document.getElementById('loading-spinner');
+    let currentReportId = null;
+
+    function appendMessage(sender, text, isMarkdown = false) {
+        const messageDiv = document.createElement('div');
+        messageDiv.classList.add('message', sender === 'user' ? 'user-message' : 'bot-message');
+        if (isMarkdown) {
+            messageDiv.innerHTML = marked.parse(text);
+        } else {
+            messageDiv.textContent = text;
         }
+        chatContainer.appendChild(messageDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
 
-        window.showReport = function(element) {
-            // Remove active class from all items
-            document.querySelectorAll('.report-history-item').forEach(item => item.classList.remove('active'));
-            // Add active class to the clicked item
-            element.classList.add('active');
+    window.newReport = function() {
+        currentReportId = null;
+        chatContainer.innerHTML = '<div class="message bot-message">Please fill out the form below to generate a new report.</div>';
+        formContainer.style.display = 'block';
+        reportForm.reset();
+        document.querySelectorAll('.history-item').forEach(item => item.classList.remove('active'));
+    }
 
-            const title = element.getAttribute('data-title');
-            const content = element.getAttribute('data-content');
-            const reportDisplay = document.getElementById('report-display');
+    window.loadReport = async function(reportId, element) {
+        if (currentReportId === reportId) return;
 
-            document.getElementById('report-display-title').innerText = title;
-            document.getElementById('report-display-content').innerHTML = marked.parse(content);
+        document.querySelectorAll('.history-item').forEach(item => item.classList.remove('active'));
+        element.classList.add('active');
+        
+        currentReportId = reportId;
+        chatContainer.innerHTML = '<div class="spinner-border text-success mx-auto" role="status"><span class="visually-hidden">Loading...</span></div>';
+        formContainer.style.display = 'none';
+
+        try {
+            // This assumes you have an API endpoint to fetch a single report's content.
+            // You might need to create this endpoint if it doesn't exist.
+            const response = await fetch(`/rag/api/report/${reportId}/`); 
+            if (!response.ok) throw new Error('Failed to load report.');
             
-            reportDisplay.classList.remove('fade-in');
-            void reportDisplay.offsetWidth; // Trigger reflow
-            reportDisplay.classList.add('fade-in');
-            reportDisplay.style.display = 'block';
-            document.getElementById('form-container').style.display = 'none';
+            const report = await response.json();
+            chatContainer.innerHTML = '';
+            appendMessage('bot', report.content, true);
+        } catch (error) {
+            console.error('Error loading report:', error);
+            chatContainer.innerHTML = '<div class="message bot-message text-danger">Error loading report.</div>';
+        }
+    }
+
+    generateReportBtn.addEventListener('click', async function() {
+        const formData = new FormData(reportForm);
+        const userQuery = formData.get('user_report_query').trim();
+
+        if (!userQuery) {
+            alert('Please provide a report query.');
+            return;
         }
 
-        function addReportToHistory(report) {
-            const historyList = document.getElementById('report-history-list');
-            const newReportItem = document.createElement('div');
-            newReportItem.className = 'report-history-item';
-            newReportItem.setAttribute('data-title', report.title);
-            newReportItem.setAttribute('data-content', report.content);
-            newReportItem.setAttribute('onclick', 'showReport(this)');
+        appendMessage('user', `Report Request: ${userQuery}`);
+        formContainer.style.display = 'none';
+        loadingSpinner.style.display = 'block';
 
-            const reportTitle = document.createElement('h6');
-            reportTitle.innerText = truncateWords(report.title, 3); // Truncate here
+        try {
+            const response = await fetch('/rag/api/generate-report/', {
+                method: 'POST',
+                headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+                body: formData
+            });
 
-            const reportDate = document.createElement('p');
-            reportDate.innerText = report.created_at;
-
-            newReportItem.appendChild(reportTitle);
-            newReportItem.appendChild(reportDate);
-
-            historyList.prepend(newReportItem); // Add new report to the top
-        }
-
-        document.getElementById('generate-report-btn').addEventListener('click', async function(event) {
-            event.preventDefault();
-
-            const form = document.getElementById('report-form');
-            const formData = new FormData(form);
-
-            const loadingSpinner = document.getElementById('loading-spinner');
-            const formContainer = document.getElementById('form-container');
-            const reportDisplay = document.getElementById('report-display');
-
-            formContainer.style.display = 'none';
-            reportDisplay.style.display = 'none';
-            loadingSpinner.style.display = 'block';
-
-            try {
-                const response = await fetch('/rag/api/generate-report/', {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRFToken': '{{ csrf_token }}'
-                    },
-                    body: formData
-                });
-
-                const result = await response.json();
-
-                if (response.ok) {
-                    const newReport = result.new_report;
-                    
-                    addReportToHistory(newReport);
-
-                    document.getElementById('report-display-title').innerText = newReport.title;
-                    document.getElementById('report-display-content').innerHTML = marked.parse(newReport.content);
-                    
-                    reportDisplay.classList.remove('fade-in');
-                    void reportDisplay.offsetWidth; // Trigger reflow
-                    reportDisplay.classList.add('fade-in');
-                    reportDisplay.style.display = 'block';
-
-                } else {
-                    const title = "Error";
-                    const content = `Error: ${result.error || 'Something went wrong.'}`;
-                    
-                    document.getElementById('report-display-title').innerText = title;
-                    document.getElementById('report-display-content').innerHTML = `<p class="text-danger">${content}</p>`;
-                    reportDisplay.style.display = 'block';
+            const data = await response.json();
+            if (response.ok) {
+                appendMessage('bot', data.new_report.content, true);
+                if (data.new_report) {
+                    addReportToHistory(data.new_report);
                 }
-            } catch (error) {
-                console.error('Error generating report:', error);
-                document.getElementById('report-display-title').innerText = "Error";
-                document.getElementById('report-display-content').innerHTML = '<p class="text-danger">An unexpected error occurred. Please try again.</p>';
-                reportDisplay.style.display = 'block';
-            } finally {
-                loadingSpinner.style.display = 'none';
+            } else {
+                appendMessage('bot', `Error: ${data.error || 'Something went wrong.'}`);
             }
-        });
+        } catch (error) {
+            console.error('Fetch error:', error);
+            appendMessage('bot', 'An unexpected error occurred. Please try again.');
+        } finally {
+            loadingSpinner.style.display = 'none';
+        }
     });
+
+    function addReportToHistory(report) {
+        const historyList = document.getElementById('report-history-list');
+        const newReportItem = document.createElement('div');
+        newReportItem.className = 'history-item active';
+        newReportItem.id = `report-${report.id}`;
+        newReportItem.setAttribute('data-report-id', report.id);
+        newReportItem.setAttribute('onclick', `loadReport(${report.id}, this)`);
+        newReportItem.textContent = report.title.split(' ').slice(0, 3).join(' ') + '...';
+
+        document.querySelectorAll('.history-item').forEach(item => item.classList.remove('active'));
+        historyList.prepend(newReportItem);
+        currentReportId = report.id;
+    }
+});
 </script>
 {% endblock %}

@@ -146,14 +146,39 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    function appendMessage(sender, text, isMarkdown = false) {
+    function appendMessage(sender, text, images = [], isMarkdown = false) {
         const messageDiv = document.createElement('div');
         messageDiv.classList.add('message', sender === 'user' ? 'user-message' : 'bot-message');
         
-        if (isMarkdown) {
-            messageDiv.innerHTML = marked.parse(text);
-        } else {
-            messageDiv.textContent = text;
+        if (text) {
+            const textNode = document.createElement('div');
+            if (isMarkdown) {
+                textNode.innerHTML = marked.parse(text);
+            } else {
+                textNode.textContent = text;
+            }
+            messageDiv.appendChild(textNode);
+        }
+
+        if (images.length > 0) {
+            const imageContainer = document.createElement('div');
+            imageContainer.style.display = 'flex';
+            imageContainer.style.gap = '10px';
+            imageContainer.style.marginTop = '10px';
+
+            for (const image of images) {
+                const img = document.createElement('img');
+                img.style.maxWidth = '150px';
+                img.style.maxHeight = '150px';
+                img.style.borderRadius = '10px';
+                if (typeof image === 'string') {
+                    img.src = image;
+                } else {
+                    img.src = URL.createObjectURL(image);
+                }
+                imageContainer.appendChild(img);
+            }
+            messageDiv.appendChild(imageContainer);
         }
         
         chatContainer.appendChild(messageDiv);
@@ -190,13 +215,30 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    function appendThinkingMessage() {
+        const messageDiv = document.createElement('div');
+        messageDiv.id = 'thinking-message';
+        messageDiv.classList.add('message', 'bot-message');
+        messageDiv.innerHTML = '<div class="spinner-border spinner-border-sm" role="status"></div> Thinking...';
+        chatContainer.appendChild(messageDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    function removeThinkingMessage() {
+        const thinkingMessage = document.getElementById('thinking-message');
+        if (thinkingMessage) {
+            thinkingMessage.remove();
+        }
+    }
+
     async function sendMessage() {
         const question = userInput.value.trim();
         const imageFiles = imageInput.files;
 
         if (!question && imageFiles.length === 0) return;
 
-        appendMessage('user', question);
+        appendMessage('user', question, Array.from(imageFiles));
+        appendThinkingMessage();
         
         const formData = new FormData();
         formData.append('question', question);
@@ -220,6 +262,7 @@ document.addEventListener('DOMContentLoaded', function() {
             });
 
             const data = await response.json();
+            removeThinkingMessage();
             if (response.ok) {
                 appendMessage('bot', data.answer, true);
                 
@@ -233,9 +276,9 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         } catch (error) {
             console.error('Fetch error:', error);
+            removeThinkingMessage();
             appendMessage('bot', 'An unexpected error occurred. Please try again.');
-        }
-    } finally {
+        } finally {
             sendButton.disabled = false;
         }
     }

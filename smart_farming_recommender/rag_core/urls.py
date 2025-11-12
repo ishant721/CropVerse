@@ -5,7 +5,8 @@ from .views import (
     ai_dashboard, 
     planning_page, 
     GenerateReportView,
-    ChatHistoryView
+    ChatHistoryView,
+    ReportDetailView
 )
 
 urlpatterns = [
@@ -15,4 +16,5 @@ urlpatterns = [
     path('api/chat/', RAGChatView.as_view(), name='rag_chat_api'),
     path('api/generate-report/', GenerateReportView.as_view(), name='generate_report'),
     path('api/chat_history/<int:session_id>/', ChatHistoryView.as_view(), name='chat_history_api'),
+    path('api/report/<int:report_id>/', ReportDetailView.as_view(), name='report_detail_api'),
 ]
